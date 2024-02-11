@@ -1,0 +1,64 @@
+# Find all .java files that are not JUnit tests
+PROGRAM_FILES := $(shell find ./ ! -name "TestSet*.java" -name "*.java")
+# Command to find the Main class name including the package
+FIND_CLASS_COMMAND := find . -name "?ain.class" | sed "s/.\///" | sed "s/\//./" | sed "s/.class//"
+
+# Default: clean, run junit4 tests, run junit5 tests, and if they pass launch the program
+all: clean compile-junit4 run-junit4 compile-junit5 run-junit5 compile run
+
+# Download the log4j .jar files
+log4j-core-2.12.4.jar:
+	wget https://dlcdn.apache.org/logging/log4j/2.12.4/apache-log4j-2.12.4-bin.tar.gz
+	tar -zxvf apache-log4j-2.12.4-bin.tar.gz apache-log4j-2.12.4-bin/log4j-core-2.12.4.jar apache-log4j-2.12.4-bin/log4j-api-2.12.4.jar
+	mv apache-log4j-2.12.4-bin/*.jar .
+	rm -rf apache-log4j-2.12.4-bin/
+	rm apache-log4j-2.12.4-bin.tar.gz
+
+# Download the JUnit .jar file
+junit-platform-console-standalone-1.9.3.jar:
+	wget https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.9.3/junit-platform-console-standalone-1.9.3.jar
+
+# Compile the program with log4j
+compile: $(PROGRAM_FILES) log4j-core-2.12.4.jar
+	javac -d . --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar $(PROGRAM_FILES)
+
+# Run main program
+run:
+	@if [ -z `$(FIND_CLASS_COMMAND)` ]; then \
+	 	echo "Could not find Main.class";\
+	  exit 1;\
+	fi
+	java --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar:. `$(FIND_CLASS_COMMAND)`
+
+# Remove all .class files in the current folder and all its subdirectories
+clean:
+	find . -name "*.class" -type f -delete
+
+# Compile only the JUnit4 test set with log4j and JUnit
+compile-junit4: $(PROGRAM_FILES) log4j-core-2.12.4.jar junit-platform-console-standalone-1.9.3.jar
+	javac -d . --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar:junit-platform-console-standalone-1.9.3.jar $(PROGRAM_FILES) TestSetJ?nit4.java
+
+# Compile only the JUnit5 test set with log4j and JUnit
+compile-junit5: $(PROGRAM_FILES) log4j-core-2.12.4.jar junit-platform-console-standalone-1.9.3.jar
+	javac -d . --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar:junit-platform-console-standalone-1.9.3.jar $(PROGRAM_FILES) TestSetJ?nit5.java
+
+# Run junit4 tests
+run-junit4: junit-platform-console-standalone-1.9.3.jar
+	java -jar junit-platform-console-standalone-1.9.3.jar --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar:. --select-class `find . -name "TestSetJ?nit4.class" | sed "s/.\///" | sed "s/\//./" | sed "s/.class//"`
+
+# Run junit5 tests
+run-junit5: junit-platform-console-standalone-1.9.3.jar
+	java -jar junit-platform-console-standalone-1.9.3.jar --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar:. --select-class `find . -name "TestSetJ?nit5.class" | sed "s/.\///" | sed "s/\//./" | sed "s/.class//"`
+
+# Setup a configuration that allows using the build-in vscode launch button to compile with log4j
+setup-vscode-launch: compile
+	@mv .vscode/tasks.json .vscode/tasks.json.old ; exit 0
+	@mv .vscode/launch.json .vscode/launch.json.old ; exit 0
+	@mv .vscode/settings.json .vscode/settings.json.old ; exit 0
+	@for f in .vscode/*.old ; do cp $$f $$f.old ; done ; exit 0
+	echo '{"version":"0.2.0","configurations":[{"type":"java","name":"Launch Program","request":"launch","console":"integratedTerminal","preLaunchTask":"compile","mainClass":"$(shell $(FIND_CLASS_COMMAND))","cwd":"${workspaceFolder}","classPaths":["${workspaceFolder}","${workspaceFolder}/log4j-api-2.12.4.jar","${workspaceFolder}/log4j-core-2.12.4.jar"],"args":""}]}' > .vscode/launch.json
+	echo '{"version":"2.0.0","tasks":[{"label":"compile","type":"shell","command":"javac -g -d . --class-path log4j-api-2.12.4.jar:log4j-core-2.12.4.jar `find ./ ! -name "TestSet*.java" -name "*.java"`","group":"build"}]}' > .vscode/tasks.json
+	echo '{"java.debug.settings.forceBuildBeforeLaunch":false}' > .vscode/settings.json
+	@echo ''
+	@echo 'THIS CONFIGURATION ASSUMES YOUR VSCODE WORKING DIRECTORY IS THE ASSIGNMENT FOLDER'
+
